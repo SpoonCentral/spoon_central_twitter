@@ -1,0 +1,1 @@
+worker: python spoon_central.py
