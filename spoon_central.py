@@ -4,10 +4,10 @@ import tweepy
 
 # Twitter auth tokens
 try:
-    consumer_key = os.environ['CONSUMER_KEY']
-    consumer_secret = os.environ['CONSUMER_SECRET']
-    access_token = os.environ['ACCESS_TOKEN']
-    access_token_secret = os.environ['ACCESS_TOKEN_SECRET']
+    consumer_key = os.environ['xkN0usRya9qHAZa60ktOrvjGe']
+    consumer_secret = os.environ['DZrKPRDhW5E4rGtrbj7Wcxm6ix5vWcBHgK2KO5TF9r1CasaeDQ']
+    access_token = os.environ['1322976554922725384-lh41c7fEN3lzuzFzP5EwgqzVOEzmww']
+    access_token_secret = os.environ['pwG8h6EquDCKJRcyQ59oCo8B3yV7p5Bs8G5MURJW0YFYs']
 
 except KeyError:
     raise RuntimeError('Auth token credentials not found in environment variables')
