@@ -22,7 +22,7 @@ def is_offensive(check_str, probability_threshold=0.50):
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(60))
 def retweet(twitter_api, search_tokens, skip_retweet_accounts):
-    """Uses the given search tokens to find tweets and retweet the given number of tweets."""
+    """Uses the given search tokens to find a tweet to retweet."""
     # Scramble the list of tokens to use a different search each time
     random.shuffle(search_tokens)
     # Look at the first 10 results to find a tweet
