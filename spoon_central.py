@@ -31,10 +31,14 @@ def retweet(twitter_api, search_tokens, skip_retweet_accounts):
     for tweet in tweepy.Cursor(
             twitter_api.search_tweets,
             q=build_search_query(search_tokens),
-            result_type=pick_random_result_type(),
+            result_type='recent',
             lang='en',
             tweet_mode='extended').items(candidate_count):
         logging.info(f'Candidate tweet:\n{tweet}')
+        # Skip if it has already been retweeted
+        if twitter_api.get_status(tweet.id).retweeted:
+            logging.warning(f'Detected an already retweeted tweet: {tweet.full_text}')
+            continue
         # Skip retweeting from banned users
         if tweet.user.screen_name in skip_retweet_accounts:
             logging.warning(f'Detected a spam user: {tweet.user.screen_name}. Skipping.')
@@ -43,9 +47,11 @@ def retweet(twitter_api, search_tokens, skip_retweet_accounts):
         if is_offensive(tweet.full_text):
             logging.warning(f'Detected an offensive tweet: {tweet.full_text}. Skipping.')
             continue
-        # Retweet!
+        # Tweet looks okay, retweet!
         logging.info(f'Retweeting: {tweet.full_text}')
         tweet.retweet()
+        # Done
+        logging.info(f'Retweet successful.')
         is_suitable_tweet_found = True
         break
 
