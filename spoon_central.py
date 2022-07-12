@@ -1,61 +1,91 @@
+import logging
 import os
 import random
 import tweepy
+from profanity_check import predict_prob
+from tenacity import retry, stop_after_attempt, wait_fixed
 
-# Twitter auth tokens
-try:
-    consumer_key = os.environ['xkN0usRya9qHAZa60ktOrvjGe']
-    consumer_secret = os.environ['DZrKPRDhW5E4rGtrbj7Wcxm6ix5vWcBHgK2KO5TF9r1CasaeDQ']
-    access_token = os.environ['1322976554922725384-lh41c7fEN3lzuzFzP5EwgqzVOEzmww']
-    access_token_secret = os.environ['pwG8h6EquDCKJRcyQ59oCo8B3yV7p5Bs8G5MURJW0YFYs']
+def build_search_query(search_tokens):
+    """Returns a search query used to find tweets using the given search tokens."""
+    concatenated_tokens = ' OR '.join(search_tokens)
+    filters = '-filter:retweets AND -filter:replies'
+    return f'{concatenated_tokens} {filters}'
 
-except KeyError:
-    raise RuntimeError('Auth token credentials not found in environment variables')
+def pick_random_result_type():
+    """Picks and returns a random result type from ['recent', 'popular', 'mixed']."""
+    available_result_types = ['recent', 'popular', 'mixed']
+    return random.choice(available_result_types)
 
-# Initialize
-auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
-auth.set_access_token(access_token, access_token_secret)
+def is_offensive(check_str, probability_threshold=0.50):
+    """Returns true if the given string is offensive, false otherwise."""
+    return predict_prob([check_str])[0] > probability_threshold
 
-api = tweepy.API(auth, wait_on_rate_limit=True)
-
-# Searchable tokens
-search_tokens = [
-    '@spooncentral',
-    '#spoonie',
-    '#spoonielife',
-    '#chronicpain',
-    '#chronicillness',
-    '#chronicillnesswarrior',
-    '#reliefnews',
-    '#spoonies',
-    '#EhlersDanlos',
-    '#lupus',
-    '#fibromyalgia',
-    '#fibro',
-    '#auotoimmunedisease',
-    '#mcas'
-]
-
-# Scramble the list of tokens to use a different order to search every time
-random.shuffle(search_tokens)
-
-# Accounts to not re-tweet from
-never_share_accounts = ['@joinwana']
-
-for tweet in tweepy.Cursor(api.search,
-                           q=f'{" OR ".join(search_tokens)} -filter:retweets AND -filter:replies',
-                           result_type='recent',
-                           lang='en',
-                           tweet_mode='extended').items(1):
-    print('\nTweet found for retweet:\n')
-    print(tweet)
-
-    # Skip re-tweeting from banned users
-    if tweet.user.screen_name in never_share_accounts:
-        print('Avoiding spam user: ', tweet.user.screen_name)
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(60))
+def retweet(twitter_api, search_tokens, skip_retweet_accounts):
+    """Uses the given search tokens to find tweets and retweet the given number of tweets."""
+    # Scramble the list of tokens to use a different search each time
+    random.shuffle(search_tokens)
+    # Look at the first 10 results to find a tweet
+    candidate_count = 10
+    is_suitable_tweet_found = False
+    for tweet in tweepy.Cursor(
+            twitter_api.search_tweets,
+            q=build_search_query(search_tokens),
+            result_type=pick_random_result_type(),
+            lang='en',
+            tweet_mode='extended').items(candidate_count):
+        logging.info(f'Candidate tweet:\n{tweet}')
+        # Skip retweeting from banned users
+        if tweet.user.screen_name in skip_retweet_accounts:
+            logging.warning(f'Detected a spam user: {tweet.user.screen_name}. Skipping.')
+            continue
+        # Skip retweeting if the tweet is offensive
+        if is_offensive(tweet.full_text):
+            logging.warning(f'Detected an offensive tweet: {tweet.full_text}. Skipping.')
+            continue
+        # Retweet!
+        logging.info(f'Retweeting: {tweet.full_text}')
+        tweet.retweet()
+        is_suitable_tweet_found = True
         break
 
-    # Re-tweet
-    tweet.retweet()
+    if not is_suitable_tweet_found:
+        # No suitable tweets were found at this point
+        logging.error('Failed to find a suitable tweet to retweet.')
 
-print('\nDone')
+def main():
+    """Main function."""
+    logging.getLogger().setLevel(logging.INFO)
+
+    # Retrieve environment variables
+    try:
+        CONSUMER_KEY = os.environ['CONSUMER_KEY']
+        CONSUMER_SECRET = os.environ['CONSUMER_SECRET']
+        ACCESS_TOKEN = os.environ['ACCESS_TOKEN']
+        ACCESS_TOKEN_SECRET = os.environ['ACCESS_TOKEN_SECRET']
+        COMMA_SEPARATED_SEARCH_TOKENS = os.environ['COMMA_SEPARATED_SEARCH_TOKENS']
+        COMMA_SEPARATED_SKIP_RETWEET_ACCOUNTS = os.environ['COMMA_SEPARATED_SKIP_RETWEET_ACCOUNTS']
+    except KeyError:
+        raise RuntimeError('Missing a required field in the environment variables.')
+
+    # Initialize Twitter API
+    auth = tweepy.OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
+    auth.set_access_token(ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+    api = tweepy.API(auth, wait_on_rate_limit=True)
+
+    # Tokens used to find tweets
+    search_tokens = list(map(str.strip, COMMA_SEPARATED_SEARCH_TOKENS.split(',')))
+    # Accounts to not retweet from
+    skip_retweet_accounts = set(map(str.strip, COMMA_SEPARATED_SKIP_RETWEET_ACCOUNTS.split(',')))
+
+    # Find posts and retweet
+    retweet(
+        twitter_api=api,
+        search_tokens=search_tokens,
+        skip_retweet_accounts=skip_retweet_accounts)
+
+    logging.info('Done.')
+
+
+if __name__ == '__main__':
+    main()
