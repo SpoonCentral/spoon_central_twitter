@@ -31,7 +31,7 @@ def retweet(twitter_api, search_tokens, skip_retweet_accounts):
     for tweet in tweepy.Cursor(
             twitter_api.search_tweets,
             q=build_search_query(search_tokens),
-            result_type='recent',
+            result_type=pick_random_result_type(),
             lang='en',
             tweet_mode='extended').items(candidate_count):
         logging.info(f'Candidate tweet:\n{tweet}')
